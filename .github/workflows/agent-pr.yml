@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          ref: master  # <-- FORCES GitHub to cleanly pull your master branch contents
 
       - name: Setup Python
         uses: actions/setup-python@v5
