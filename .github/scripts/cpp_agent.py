@@ -1,93 +1,107 @@
 import os
-import json
-import glob
+import re
 from openai import OpenAI
 
-def find_cpp_files():
-    # Recursively find all C++ source and header files in the repo
-    files = []
-    for ext in ['*.cpp', '*.hpp', '*.h', '*.cc', '*.cxx','*.md']:
-        files.extend(glob.glob(f'**/{ext}', recursive=True))
-    return [f for f in files if 'node_modules' not in f and '.git' not in f]
-
 def main():
+    # 1. Check for the OpenRouter API Key
     api_key = os.getenv("OPENROUTER_API_KEY")
-    issue_title = os.getenv("ISSUE_TITLE", "")
-    issue_body = os.getenv("ISSUE_BODY", "")
-    
     if not api_key:
         print("Error: OPENROUTER_API_KEY secret is not set.")
-        return
+        exit(1)
 
-    print("Scanning repository for C++ files...")
-    cpp_files = find_cpp_files()
-    if not cpp_files:
-        print("No C++ files found in the workspace.")
-        return
-        
-    print(f"Found files: {cpp_files}")
+    # 2. Extract issue metadata from the environment
+    issue_title = os.getenv("ISSUE_TITLE", "")
+    issue_body = os.getenv("ISSUE_BODY", "")
+    issue_context = f"Title: {issue_title}\n\nBody:\n{issue_body}".lower()
 
-    # Build context by listing the files and their content summary for the LLM
-    repo_context = ""
-    for filepath in cpp_files[:10]: # Limit to first 10 files for context safety
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            repo_context += f"\n--- FILE: {filepath} ---\n{content}\n"
-        except Exception as e:
-            print(f"Could not read {filepath}: {e}")
-
-    # Connect to OpenRouter using OpenAI SDK compatibility
+    print("Initializing OpenRouter Client...")
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
+        base_url="https://openrouter.ai",
         api_key=api_key,
     )
 
+    # 3. Scan the codebase with token limits in mind
+    relevant_extensions = ('.cpp', '.hpp', '.h', '.cc', '.md')
+    code_base_context = ""
+    target_files_found = []
+
+    print("Scanning repository for relevant files...")
+    for root, dirs, files in os.walk("."):
+        if '.git' in root or '.github' in root:
+            continue
+        for file in files:
+            if file.endswith(relevant_extensions):
+                file_path = os.path.join(root, file)
+                file_name_lower = file.lower()
+                
+                # 🔥 TOKEN OPTIMIZATION FILTER
+                # If the issue specifically talks about 'CPP23.md', skip other massive cheat sheets
+                if "cpp23" in issue_context and "cpp23" not in file_name_lower:
+                    continue 
+
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        code_base_context += f"\n--- FILE: {file_path} ---\n{content}\n"
+                        target_files_found.append(file_path)
+                except Exception as e:
+                    print(f"Skipping file {file_path} due to error: {e}")
+
+    print(f"Bundled {len(target_files_found)} files into context.")
+
+    # 4. Construct the prompt for the C++ optimized AI model
     system_prompt = (
-        "You are an expert C++ Senior Software Engineer AI agent.\n"
-        "Your task is to analyze a GitHub issue along with the repository files, "
-        "and determine exactly which file needs a change and what that change should be.\n"
-        "You must respond ONLY with a JSON object matching this structure:\n"
-        "{\n"
-        "  \"file_path\": \"path/to/file.cpp\",\n"
-        "  \"new_content\": \"the entire complete updated text of the file\"\n"
-        "}\n"
-        "Do not include any explanation, markdown blocks, or extra text outside the JSON."
+        "You are an expert AI C++ software engineer agent. Your task is to resolve the user's issue "
+        "by modifying the repository files provided in the context. "
+        "CRITICAL INSTRUCTION: You must respond ONLY with the fully rewritten file content wrapped in a markdown code block. "
+        "Identify which file needs to be modified, rewrite its content entirely with the requested fix, "
+        "and start your response with '```' followed by the file path. Do not explain your changes."
     )
 
-    user_prompt = f"ISSUE TITLE: {issue_title}\nISSUE DESCRIPTION:\n{issue_body}\n\nREPOSITORY SOURCE FILES:\n{repo_context}"
+    user_prompt = f"Here is the repository context:\n{code_base_context}\n\nHere is the issue to fix:\n{issue_title}\n{issue_body}"
 
     print("Querying Qwen 2.5 Coder via OpenRouter...")
-    response = client.chat.completions.create(
-        model="qwen/qwen-2.5-coder-32b-instruct",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "role", "content": user_prompt} if hasattr(OpenAI, "deprecated") else {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.1
-    )
-
-    raw_output = response.choices[0].message.content.strip()
-    
-    # Strip markdown block formatting if the LLM ignores instructions and adds it
-    if raw_output.startswith("```"):
-        raw_output = raw_output.strip("`").replace("json", "", 1).strip()
-
     try:
-        result = json.loads(raw_output)
-        target_file = result.get("file_path")
-        new_content = result.get("new_content")
+        completion = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://github.com", 
+                "X-Title": "GitHub Actions C++ Automation Agent",
+            },
+            model="qwen/qwen-2.5-coder-32b-instruct",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        response_text = completion.choices[0].message.content
+        print("AI successfully responded. Processing changes...")
 
-        if target_file and new_content:
-            print(f"Applying AI changes to {target_file}...")
-            with open(target_file, 'w', encoding='utf-8') as f:
-                f.write(new_content)
-            print("Changes successfully applied to workspace.")
-        else:
-            print("AI response was malformed or missing keys.")
+        # 5. Extract the file paths and modifications from the AI block
+        # Looks for blocks like: ```./CPP23.md or ```CPP23.md followed by code
+        pattern = r"```(?:\.\/)?([a-zA-Z0-9_\-\.\/]+)\n(.*?)```"
+        matches = re.findall(pattern, response_text, re.DOTALL)
+
+        if not matches:
+            print("Error: Could not parse file changes from AI response.")
+            print(f"Raw Response: {response_text}")
+            exit(1)
+
+        for file_path, new_content in matches:
+            file_path = file_path.strip()
+            print(f"Writing automated modifications back to: {file_path}")
+            
+            # Ensure folder structures exist if the AI suggests a new path
+            os.makedirs(os.path.dirname(file_path) or '.', exist_ok=True)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(new_content.strip())
+        
+        print("Agent actions completed successfully!")
+
     except Exception as e:
-        print(f"Failed to parse AI response as JSON: {e}")
-        print(f"Raw Output was:\n{raw_output}")
+        print(f"Failed to communicate with OpenRouter API: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
