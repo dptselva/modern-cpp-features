@@ -67,7 +67,7 @@ def main():
                 "HTTP-Referer": "https://github.com", 
                 "X-Title": "GitHub Actions C++ Automation Agent",
             },
-            model="google/gemini-2.5-flash",
+            model="meta-llama/llama-3.3-70b-instruct:free",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
