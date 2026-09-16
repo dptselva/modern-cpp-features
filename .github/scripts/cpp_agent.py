@@ -67,7 +67,7 @@ def main():
                 "HTTP-Referer": "https://github.com", 
                 "X-Title": "GitHub Actions C++ Automation Agent",
             },
-            model="qwen/qwen-2.5-coder-32b-instruct",
+            model="google/gemini-2.5-flash",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
