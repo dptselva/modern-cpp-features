@@ -55,7 +55,7 @@ def main():
     user_prompt = f"Here is the repository context:\n{code_base_context}\n\nHere is the issue to fix:\n{issue_title}\n{issue_body}"
 
     # 🚨 DYNAMIC FIX: Forcing Llama-3.3-70b-instruct:free explicitly
-    selected_model = "meta-llama/llama-3.3-70b-instruct:free"
+    selected_model = "openrouter/free"
     print(f"Querying {selected_model} via OpenRouter...")
     
     try:
