@@ -1,47 +1,31 @@
 import os
 
 def main():
-    # Structural check to ensure environment tracks issue names
-    issue_title = os.getenv("ISSUE_TITLE", "")
-    issue_body = os.getenv("ISSUE_BODY", "")
-    
     target_file = "CPP23.md"
     if not os.path.exists(target_file):
         print(f"Error: Target file {target_file} not found.")
         exit(1)
 
-    print(f"Reading target file: {target_file}")
     with open(target_file, 'r', encoding='utf-8') as f:
         original_content = f.read()
 
-    print(f"Processing Issue context: {issue_title}")
+    old_new_way = "struct T {\n  decltype(auto) operator[](this auto& self, std::size_t idx) {\n    return self.mVector[idx];\n  }\n};"
+    fixed_new_way = "struct T {\n  std::vector<int> mVector;\n\n  decltype(auto) operator[](this auto& self, std::size_t idx) {\n    return self.mVector[idx];\n  }\n};"
     
-    # Define the exact missing pattern location inside the codebase sheet
-    old_pattern = (
-        "template <typename Self>\n"
-        "    auto&& operator[](this Self&& self, size_t index) {\n"
-        "        return std::forward<Self>(self).mVector[index];\n"
-        "    }"
-    )
-    
-    new_pattern = (
-        "std::vector<int> mVector;\n\n"
-        "    template <typename Self>\n"
-        "    auto&& operator[](this Self&& self, size_t index) {\n"
-        "        return std::forward<Self>(self).mVector[index];\n"
-        "    }"
-    )
+    old_old_way = "struct T {\n  value_t& operator[](std::size_t idx) { return mVector[idx]; }\n  const value_t& operator[](std::size_t idx) const { return mVector[idx]; }\n};"
+    fixed_old_way = "struct T {\n  std::vector<int> mVector;\n\n  value_t& operator[](std::size_t idx) { return mVector[idx]; }\n  const value_t& operator[](std::size_t idx) const { return mVector[idx]; }\n};"
 
-    # Surgically inject the C++ vector declaration pattern locally
-    if old_pattern in original_content:
-        print("Target code region found! Surgically applying the 'mVector' fix pattern...")
-        updated_content = original_content.replace(old_pattern, new_pattern)
-        
+    if "std::vector<int> mVector;" in original_content:
+        print("Target pattern already updated. Skipping file edits.")
+    elif old_new_way in original_content or old_old_way in original_content:
+        updated_content = original_content.replace(old_new_way, fixed_new_way).replace(old_old_way, fixed_old_way)
         with open(target_file, 'w', encoding='utf-8') as f:
             f.write(updated_content)
-        print("Surgical file patch completed successfully! Original document layout preserved.")
     else:
-        print("Target pattern already updated or not found. Skipping file edits.")
+        import re
+        updated_content = re.sub(r"(struct\s+T\s*\{)", r"\1\n  std::vector<int> mVector;", original_content)
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
 
 if __name__ == "__main__":
     main()
