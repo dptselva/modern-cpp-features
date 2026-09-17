@@ -40,6 +40,7 @@ Using explicit object member functions introduced in C++23, deducing the object'
 ```c++
 // NEW WAY USING DEDUCING THIS:
 struct T {
+  std::vector<int> mVector;
   decltype(auto) operator[](this auto& self, std::size_t idx) { 
     return self.mVector[idx]; 
   }
@@ -47,6 +48,7 @@ struct T {
 
 // OLD WAY:
 struct T {
+  std::vector<int> mVector;
   value_t& operator[](std::size_t idx) {
     return mVector[idx];
   }
