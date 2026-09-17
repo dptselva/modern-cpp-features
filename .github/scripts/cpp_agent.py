@@ -14,7 +14,7 @@ def main():
 
     print("Initializing OpenRouter Client...")
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
+        base_url="https://openrouter.ai",
         api_key=api_key,
     )
 
@@ -54,7 +54,6 @@ def main():
 
     user_prompt = f"Here is the repository context:\n{code_base_context}\n\nHere is the issue to fix:\n{issue_title}\n{issue_body}"
 
-    # 🚨 DYNAMIC FIX: Forcing Llama-3.3-70b-instruct:free explicitly
     selected_model = "openrouter/free"
     print(f"Querying {selected_model} via OpenRouter...")
     
@@ -71,39 +70,14 @@ def main():
             ]
         )
         
-        # Safe Response Safeguard: check if completion is a string (OpenRouter error message)
-        if isinstance(completion, str):
-            print(f"❌ Error: OpenRouter returned an invalid response block string instead of an object: {completion}")
-            exit(1)
-            
-        if not hasattr(completion, 'choices') or not completion.choices:
-            print(f"❌ Error: Response object does not have choices. Raw Response: {completion}")
-            exit(1)
-            
-        # ... (API response parsing above) ...
-        response_text = completion.choices.message.content
+        # 🚨 THE FIXED LINE: Correctly extracting from the list item [0]
+        response_text = completion.choices[0].message.content
         print("AI successfully responded. Processing changes...")
-        
-        # 🚨 FIX: Safely parse whether OpenRouter returned an object, list, or dict
-        if hasattr(completion, 'choices') and completion.choices:
-            choice = completion.choices[0]
-            if hasattr(choice, 'message'):
-                response_text = choice.message.content
-            elif isinstance(choice, dict) and 'message' in choice:
-                response_text = choice['message'].get('content', '')
-            else:
-                response_text = str(choice)
-        elif isinstance(completion, dict) and 'choices' in completion:
-            response_text = completion['choices'][0]['message']['content']
-        else:
-            response_text = str(completion)
 
-        # ==========================================
-        # 🔥 PLACE THE FALLBACK CHANGES HERE
-        # ==========================================
         pattern = r"```(?:\.\/)?([a-zA-Z0-9_\-\.\/]+)\n(.*?)```"
         matches = re.findall(pattern, response_text, re.DOTALL)
 
+        # Fallback if the AI uses a generic ```markdown format
         if not matches or (len(matches) == 1 and matches[0][0].strip().lower() == "markdown"):
             print("Detected generic markdown formatting from AI. Forcing fallback target to CPP23.md...")
             clean_content = re.sub(r"^```[a-zA-Z0-9]*\n", "", response_text.strip())
@@ -118,7 +92,6 @@ def main():
                 f.write(new_content.strip())
         
         print("Agent actions completed successfully!")
-        # ==========================================
 
     except Exception as e:
         print(f"Failed to communicate with OpenRouter API: {e}")
@@ -126,4 +99,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
