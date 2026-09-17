@@ -3,9 +3,10 @@ import json
 import urllib.request
 
 def main():
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    # 1. We switch the environment secret to look for GROQ
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        print("Error: OPENROUTER_API_KEY secret is not set.")
+        print("Error: GROQ_API_KEY secret is not set.")
         exit(1)
 
     issue_title = os.getenv("ISSUE_TITLE", "")
@@ -29,42 +30,34 @@ def main():
 
     user_prompt = f"Target File Content:\n{original_content}\n\nIssue to Fix:\nTitle: {issue_title}\nBody: {issue_body}"
 
-    print("Querying openrouter/free router via native HTTP client...")
+    print("Querying Groq Cloud endpoint via native HTTP client...")
     
-    url = "https://openrouter.ai"
+    # Switch endpoint URL straight to Groq API
+    url = "https://groq.com"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "HTTP-Referer": "https://github.com",
-        "X-Title": "GitHub Actions C++ Automation Agent"
+        "Accept": "application/json"
     }
     
     payload = {
-        "model": "openrouter/free",
+        "model": "llama-3.3-70b-specdec",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
     }
 
-    # Use native urllib to break past module-level firewall rules
     req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
     
     try:
         with urllib.request.urlopen(req) as response:
             response_data = json.loads(response.read().decode('utf-8'))
-            
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                response_text = response_data["choices"][0]["message"]["content"]
-            else:
-                print(f"❌ Unexpected response structure: {response_data}")
-                exit(1)
+            response_text = response_data["choices"][0]["message"]["content"]
                 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode('utf-8')
-        print(f"❌ Network request dropped at front gate. HTTP Error {e.code}. Details:\n{error_body}")
+        print(f"❌ Groq API Server Error {e.code}. Details:\n{error_body}")
         exit(1)
     except Exception as e:
         print(f"❌ Failed to reach API endpoint: {e}")
