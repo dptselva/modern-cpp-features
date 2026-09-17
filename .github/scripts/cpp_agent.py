@@ -1,5 +1,4 @@
 import os
-import re
 from openai import OpenAI
 
 def main():
@@ -10,107 +9,62 @@ def main():
 
     issue_title = os.getenv("ISSUE_TITLE", "")
     issue_body = os.getenv("ISSUE_BODY", "")
-    issue_context = f"Title: {issue_title}\n\nBody:\n{issue_body}".lower()
 
     print("Initializing OpenRouter Client...")
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
+        base_url="https://openrouter.ai",
         api_key=api_key,
     )
 
-    relevant_extensions = ('.cpp', '.hpp', '.h', '.cc', '.md')
-    code_base_context = ""
-    target_files_found = []
+    # Hard-targeted file path to completely stop file generation errors
+    target_file = "CPP23.md"
+    
+    if not os.path.exists(target_file):
+        print(f"Error: Target file {target_file} not found at repository root.")
+        exit(1)
 
-    print("Scanning repository for relevant files...")
-    for root, dirs, files in os.walk("."):
-        if '.git' in root or '.github' in root:
-            continue
-        for file in files:
-            if file.endswith(relevant_extensions):
-                file_path = os.path.join(root, file)
-                file_name_lower = file.lower()
-                
-                if "cpp23" in issue_context and "cpp23" not in file_name_lower:
-                    continue 
-
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        code_base_context += f"\n--- FILE: {file_path} ---\n{content}\n"
-                        target_files_found.append(file_path)
-                except Exception as e:
-                    print(f"Skipping file {file_path} due to error: {e}")
-
-    print(f"Bundled {len(target_files_found)} files into context.")
+    print(f"Reading target file: {target_file}")
+    with open(target_file, 'r', encoding='utf-8') as f:
+        original_content = f.read()
 
     system_prompt = (
-        "You are an expert AI C++ software engineer agent. Your task is to resolve the user's issue "
-        "by modifying the repository files provided in the context. "
-        "CRITICAL INSTRUCTION: You must respond ONLY with the fully rewritten file content wrapped in a markdown code block. "
-        "Identify which file needs to be modified, rewrite its content entirely with the requested fix, "
-        "and start your response with '```' followed by the file path. Do not explain your changes."
+        "You are an expert AI C++ software engineer assistant.\n"
+        "Your task is to fix the missing code element described in the user's issue inside the provided document.\n"
+        "CRITICAL RULE: You must return the COMPLETELY rewritten document text content. Do not include any explanations, "
+        "do not include introductory greetings, and do not wrap your output in ``` markdown backticks. Just output the text file content directly."
     )
 
-    user_prompt = f"Here is the repository context:\n{code_base_context}\n\nHere is the issue to fix:\n{issue_title}\n{issue_body}"
+    user_prompt = f"Target File Content:\n{original_content}\n\nIssue to Fix:\nTitle: {issue_title}\nBody: {issue_body}"
 
-    selected_model = "openrouter/free"
-    print(f"Querying {selected_model} via OpenRouter...")
-    
+    print("Querying openrouter/free router...")
     try:
         completion = client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://github.com", 
                 "X-Title": "GitHub Actions C++ Automation Agent",
             },
-            model=selected_model,
+            model="openrouter/free",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ]
         )
         
-        # 🚨 BULLETPROOF PROTECTION LAYER 🚨
-        # Detect if OpenRouter sent back a raw string error description instead of an object
-        if isinstance(completion, str):
-            print(f"❌ OpenRouter returned a raw string instead of an object. The free-tier route might be overloaded.")
-            print(f"Details from server: {completion}")
-            exit(1)
-
-        # Safely attempt to unpack the response string
-        try:
-            response_text = completion.choices[0].message.content
-        except (AttributeError, TypeError, IndexError):
-            # Fallback if choices isn't behaving like a standard object structure
-            if hasattr(completion, 'choices') and completion.choices:
-                choice = completion.choices[0]
-                if isinstance(choice, dict):
-                    response_text = choice.get('message', {}).get('content', '')
-                else:
-                    response_text = getattr(choice.message, 'content', str(choice))
-            else:
-                response_text = str(completion)
-
-        print("AI successfully responded. Processing changes...")
-
-        pattern = r"```(?:\.\/)?([a-zA-Z0-9_\-\.\/]+)\n(.*?)```"
-        matches = re.findall(pattern, response_text, re.DOTALL)
-
-        # Fallback if the AI drops a generic ```markdown tag format
-        if not matches or (len(matches) == 1 and matches[0][0].strip().lower() == "markdown"):
-            print("Detected generic markdown formatting from AI. Forcing fallback target to CPP23.md...")
-            clean_content = re.sub(r"^```[a-zA-Z0-9]*\n", "", response_text.strip())
-            clean_content = re.sub(r"\n```$", "", clean_content)
-            matches = [("CPP23.md", clean_content)]
-
-        for file_path, new_content in matches:
-            file_path = file_path.strip()
-            print(f"Writing automated modifications back to: {file_path}")
-            os.makedirs(os.path.dirname(file_path) or '.', exist_ok=True)
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(new_content.strip())
+        # Pull response safely out of the options array
+        response_text = completion.choices[0].message.content
         
-        print("Agent actions completed successfully!")
+        # Secondary fallback clean to sanitize accidental markdown framing backticks from the model
+        if response_text.startswith("```"):
+            # Strip first line if it contains the markdown header string
+            response_text = "\n".join(response_text.splitlines()[1:])
+        if response_text.endswith("```"):
+            response_text = "\n".join(response_text.splitlines()[:-1])
+
+        print(f"Writing automated corrections straight back into: {target_file}")
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(response_text.strip())
+        
+        print("Agent actions completed successfully with zero file footprint changes!")
 
     except Exception as e:
         print(f"Failed to communicate with OpenRouter API: {e}")
