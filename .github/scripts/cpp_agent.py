@@ -80,16 +80,21 @@ def main():
             print(f"❌ Error: Response object does not have choices. Raw Response: {completion}")
             exit(1)
             
-        response_text = completion.choices[0].message.content
+        # ... (API response parsing above) ...
+        response_text = completion.choices.message.content
         print("AI successfully responded. Processing changes...")
 
+        # ==========================================
+        # 🔥 PLACE THE FALLBACK CHANGES HERE
+        # ==========================================
         pattern = r"```(?:\.\/)?([a-zA-Z0-9_\-\.\/]+)\n(.*?)```"
         matches = re.findall(pattern, response_text, re.DOTALL)
 
-        if not matches:
-            print("Error: Could not parse file changes from AI response.")
-            print(f"Raw Response: {response_text}")
-            exit(1)
+        if not matches or (len(matches) == 1 and matches[0][0].strip().lower() == "markdown"):
+            print("Detected generic markdown formatting from AI. Forcing fallback target to CPP23.md...")
+            clean_content = re.sub(r"^```[a-zA-Z0-9]*\n", "", response_text.strip())
+            clean_content = re.sub(r"\n```$", "", clean_content)
+            matches = [("CPP23.md", clean_content)]
 
         for file_path, new_content in matches:
             file_path = file_path.strip()
@@ -99,6 +104,7 @@ def main():
                 f.write(new_content.strip())
         
         print("Agent actions completed successfully!")
+        # ==========================================
 
     except Exception as e:
         print(f"Failed to communicate with OpenRouter API: {e}")
@@ -106,3 +112,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
