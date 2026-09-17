@@ -74,10 +74,11 @@ def main():
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.1
+            temperature=0.1,
+            max_tokens=150,  # 🔥 ADD THIS LINE TO STAY UNDER THE FREE-TIER LIMIT
         )
         
-        corrected_block = completion.choices[0].message.content.strip()
+        corrected_block = completion.choices.message.content.strip()
 
         # Sanitize accidental backticks from the model wrapper output if present
         if corrected_block.startswith("```"):
