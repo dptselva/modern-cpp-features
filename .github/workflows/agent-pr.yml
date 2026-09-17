@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install openai requests 
+          pip install grok
 
       - name: Run AI Agent
         env:
