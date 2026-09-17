@@ -1,5 +1,6 @@
 import os
-from openai import OpenAI
+# 🔥 Step 1: Switch directly to Groq's official dedicated library client
+from groq import Groq
 
 def main():
     api_key = os.getenv("GROQ_API_KEY")
@@ -19,7 +20,6 @@ def main():
     with open(target_file, 'r', encoding='utf-8') as f:
         original_content = f.read()
 
-    # Isolate the context window around 'Deducing this'
     search_context_start = original_content.find("### Deducing this")
     if search_context_start == -1:
         search_context_start = 0
@@ -39,13 +39,11 @@ def main():
         f"Please provide the corrected block replacing the original struct T blocks inside the snippet."
     )
 
-    print("Initializing Groq Client...")
-    client = OpenAI(
-        base_url="https://groq.com",
-        api_key=api_key
-    )
+    print("Initializing Official Groq Client...")
+    # Groq library handles the base URLs, headers, and endpoints perfectly natively
+    client = Groq(api_key=api_key)
 
-    # Hardcoded to Groq's active production model to stop 405 loop entirely
+    # Targeting Groq's highly active, high-speed Llama 3.3 runtime model
     selected_model = "llama-3.3-70b-versatile"
     print(f"Querying {selected_model} via Groq API for the targeted fix...")
     
@@ -57,7 +55,7 @@ def main():
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.1,
-            max_tokens=150  # Throttled to keep under free tier limits
+            max_tokens=150
         )
         
         corrected_block = completion.choices[0].message.content.strip()
@@ -69,7 +67,6 @@ def main():
 
         print("Surgically applying the AI correction back to the file system...")
         
-        # Target the exact missing block context natively in Python
         old_pattern = (
             "template <typename Self>\n"
             "    auto&& operator[](this Self&& self, size_t index) {\n"
