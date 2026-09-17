@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests 
+          pip install openai requests 
 
       - name: Run AI Agent
         env:
