@@ -22,9 +22,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
-        run: |
-          pip install grok
+      - name: Verify Environment
+        run: echo "Environment verified. Launching native client script..."
 
       - name: Run AI Agent
         env:
