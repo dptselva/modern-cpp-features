@@ -14,7 +14,7 @@ def main():
 
     print("Initializing OpenRouter Client...")
     client = OpenAI(
-        base_url="https://openrouter.ai",
+        base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
     )
 
@@ -70,14 +70,33 @@ def main():
             ]
         )
         
-        # 🚨 THE FIXED LINE: Correctly extracting from the list item [0]
-        response_text = completion.choices[0].message.content
+        # 🚨 BULLETPROOF PROTECTION LAYER 🚨
+        # Detect if OpenRouter sent back a raw string error description instead of an object
+        if isinstance(completion, str):
+            print(f"❌ OpenRouter returned a raw string instead of an object. The free-tier route might be overloaded.")
+            print(f"Details from server: {completion}")
+            exit(1)
+
+        # Safely attempt to unpack the response string
+        try:
+            response_text = completion.choices[0].message.content
+        except (AttributeError, TypeError, IndexError):
+            # Fallback if choices isn't behaving like a standard object structure
+            if hasattr(completion, 'choices') and completion.choices:
+                choice = completion.choices[0]
+                if isinstance(choice, dict):
+                    response_text = choice.get('message', {}).get('content', '')
+                else:
+                    response_text = getattr(choice.message, 'content', str(choice))
+            else:
+                response_text = str(completion)
+
         print("AI successfully responded. Processing changes...")
 
         pattern = r"```(?:\.\/)?([a-zA-Z0-9_\-\.\/]+)\n(.*?)```"
         matches = re.findall(pattern, response_text, re.DOTALL)
 
-        # Fallback if the AI uses a generic ```markdown format
+        # Fallback if the AI drops a generic ```markdown tag format
         if not matches or (len(matches) == 1 and matches[0][0].strip().lower() == "markdown"):
             print("Detected generic markdown formatting from AI. Forcing fallback target to CPP23.md...")
             clean_content = re.sub(r"^```[a-zA-Z0-9]*\n", "", response_text.strip())
