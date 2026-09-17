@@ -39,7 +39,7 @@ def main():
 
     try:
         completion = client.chat.completions.create(
-            model="qwen-2.5-coder-32b",
+            model="qwen/qwen3.6-27b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
