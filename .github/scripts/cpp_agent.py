@@ -2,7 +2,6 @@ import os
 from openai import OpenAI
 
 def main():
-    # Load Groq key from environment
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         print("Error: GROQ_API_KEY secret is not set.")
@@ -11,7 +10,6 @@ def main():
     issue_title = os.getenv("ISSUE_TITLE", "")
     issue_body = os.getenv("ISSUE_BODY", "")
 
-    # Hard-targeted file override
     target_file = "CPP23.md"
     if not os.path.exists(target_file):
         print(f"Error: Target file {target_file} not found.")
@@ -30,16 +28,43 @@ def main():
 
     user_prompt = f"Target File Content:\n{original_content}\n\nIssue to Fix:\nTitle: {issue_title}\nBody: {issue_body}"
 
-    print("Querying Groq Cloud using official client...")
-    # Initialize official client directly targeting Groq base router
+    print("Initializing Groq Client...")
     client = OpenAI(
         base_url="https://api.groq.com/openai/v1",
         api_key=api_key
     )
 
+    # 🔥 PROACTIVE STEP: Programmatically discover a live model on Groq's active list
+    print("Fetching active models list from Groq to find an online model...")
+    try:
+        models_list = client.models.list()
+        active_models = [m.id for m in models_list.data]
+        print(f"Available models found: {active_models}")
+        
+        # Prioritize any available text models (Llama 3.3, Qwen, or fallback GPT-OSS)
+        selected_model = None
+        for preference in ["llama-3.3", "llama3", "qwen3.6", "qwen", "gpt-oss", "llama"]:
+            for model_id in active_models:
+                if preference in model_id.lower() and "vision" not in model_id.lower() and "guard" not in model_id.lower():
+                    selected_model = model_id
+                    break
+            if selected_model:
+                break
+                
+        if not selected_model:
+            # Absolute fallback to whatever the first text model is
+            selected_model = active_models[0]
+            
+        print(f"✅ Proactively selected active model: {selected_model}")
+
+    except Exception as e:
+        print(f"⚠️ Could not fetch active models list dynamically: {e}. Falling back to default ID mapping.")
+        selected_model = "llama-3.3-70b-versatile"
+
+    print(f"Querying {selected_model} via Groq API...")
     try:
         completion = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model=selected_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -49,7 +74,6 @@ def main():
         
         response_text = completion.choices[0].message.content
 
-        # Strip out any accidental markdown wrapper backticks if the model drops them
         if response_text.startswith("```"):
             response_text = "\n".join(response_text.splitlines()[1:])
         if response_text.endswith("```"):
