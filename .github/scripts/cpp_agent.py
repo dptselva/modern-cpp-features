@@ -3,7 +3,6 @@ import json
 import urllib.request
 
 def main():
-    # 1. We switch the environment secret to look for GROQ
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         print("Error: GROQ_API_KEY secret is not set.")
@@ -32,7 +31,6 @@ def main():
 
     print("Querying Groq Cloud endpoint via native HTTP client...")
     
-    # Switch endpoint URL straight to Groq API
     url = "https://groq.com"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -41,14 +39,18 @@ def main():
     }
     
     payload = {
-        "model": "llama-3.3-70b-specdec",
+        # 🔥 FIX: Swapped to Groq's most stable production model path
+        "model": "llama3-70b-8192", 
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ]
+        ],
+        "temperature": 0.2
     }
 
-    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+    # Ensure json data payloads are wrapped cleanly
+    data_payload = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data_payload, headers=headers, method='POST')
     
     try:
         with urllib.request.urlopen(req) as response:
