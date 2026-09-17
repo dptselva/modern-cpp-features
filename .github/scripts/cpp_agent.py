@@ -83,6 +83,20 @@ def main():
         # ... (API response parsing above) ...
         response_text = completion.choices.message.content
         print("AI successfully responded. Processing changes...")
+        
+        # 🚨 FIX: Safely parse whether OpenRouter returned an object, list, or dict
+        if hasattr(completion, 'choices') and completion.choices:
+            choice = completion.choices[0]
+            if hasattr(choice, 'message'):
+                response_text = choice.message.content
+            elif isinstance(choice, dict) and 'message' in choice:
+                response_text = choice['message'].get('content', '')
+            else:
+                response_text = str(choice)
+        elif isinstance(completion, dict) and 'choices' in completion:
+            response_text = completion['choices'][0]['message']['content']
+        else:
+            response_text = str(completion)
 
         # ==========================================
         # 🔥 PLACE THE FALLBACK CHANGES HERE
