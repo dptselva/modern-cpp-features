@@ -28,6 +28,7 @@ jobs:
 
       - name: Run AI Agent
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }} 
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
